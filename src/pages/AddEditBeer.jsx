@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star } from 'lucide-react';
+import { ArrowLeft, Star, Camera, X } from 'lucide-react';
 import { useBeers } from '../hooks/useBeers';
-import { getBeerById } from '../firebase/services';
+import { getBeerById, uploadBeerImage } from '../firebase/services';
 
 const STYLES = ['IPA', 'Stout', 'Lager', 'Pilsner', 'Porter', 'Ale', 'Sour', 'Wheat', 'Other'];
 
@@ -10,11 +10,16 @@ export default function AddEditBeer() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { createNewBeer, editBeer } = useBeers();
+    const fileInputRef = useRef(null);
 
     const isEditing = Boolean(id);
     const [loading, setLoading] = useState(isEditing);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
+
+    // Image state
+    const [imageFile, setImageFile] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -37,6 +42,9 @@ export default function AddEditBeer() {
                         abv: data.abv || '',
                         volumeMl: data.volumeMl || ''
                     });
+                    if (data.imageUrl) {
+                        setImagePreview(data.imageUrl);
+                    }
                     setLoading(false);
                 })
                 .catch(err => {
@@ -55,6 +63,26 @@ export default function AddEditBeer() {
         setFormData(prev => ({ ...prev, rating: ratingValue }));
     };
 
+    const handleImageChange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImageFile(file);
+
+        // Generate a local preview immediately
+        const reader = new FileReader();
+        reader.onloadend = () => setImagePreview(reader.result);
+        reader.readAsDataURL(file);
+    };
+
+    const handleRemoveImage = (e) => {
+        e.stopPropagation();
+        setImageFile(null);
+        setImagePreview(null);
+        setFormData(prev => ({ ...prev, imageUrl: '' }));
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.name || !formData.brewery) {
@@ -65,13 +93,21 @@ export default function AddEditBeer() {
         setSubmitting(true);
         setError(null);
 
-        const payload = {
-            ...formData,
-            abv: formData.abv ? parseFloat(formData.abv) : null,
-            volumeMl: formData.volumeMl ? parseInt(formData.volumeMl, 10) : null
-        };
-
         try {
+            let finalImageUrl = formData.imageUrl;
+
+            // Upload new image if one was selected
+            if (imageFile) {
+                finalImageUrl = await uploadBeerImage(imageFile);
+            }
+
+            const payload = {
+                ...formData,
+                imageUrl: finalImageUrl,
+                abv: formData.abv ? parseFloat(formData.abv) : null,
+                volumeMl: formData.volumeMl ? parseInt(formData.volumeMl, 10) : null
+            };
+
             if (isEditing) {
                 await editBeer(id, payload);
             } else {
@@ -158,13 +194,50 @@ export default function AddEditBeer() {
                         </div>
                     </div>
 
+                    {/* Image Upload */}
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1">Image URL</label>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Photo</label>
                         <input
-                            type="url" name="imageUrl"
-                            className="w-full border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-gray-50 hover:bg-white transition-colors"
-                            value={formData.imageUrl} onChange={handleChange} placeholder="https://example.com/bottle.png"
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={handleImageChange}
+                            className="hidden"
+                            id="beer-image-input"
                         />
+                        <div
+                            onClick={() => fileInputRef.current?.click()}
+                            className="relative w-full h-48 border-2 border-dashed border-gray-200 rounded-2xl overflow-hidden flex items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100 hover:border-primary transition-all group"
+                        >
+                            {imagePreview ? (
+                                <>
+                                    <img
+                                        src={imagePreview}
+                                        alt="Preview"
+                                        className="w-full h-full object-contain p-2"
+                                    />
+                                    {/* Remove button */}
+                                    <button
+                                        type="button"
+                                        onClick={handleRemoveImage}
+                                        className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                    {/* Tap-to-change overlay */}
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/30 text-white text-xs text-center py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Tap to change photo
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex flex-col items-center gap-2 text-gray-400 group-hover:text-primary transition-colors pointer-events-none">
+                                    <Camera size={36} strokeWidth={1.5} />
+                                    <span className="text-sm font-medium">Add Photo</span>
+                                    <span className="text-xs text-gray-400">Tap to choose from library or capture</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="pt-2">
@@ -204,7 +277,7 @@ export default function AddEditBeer() {
                             disabled={submitting}
                             className="w-full bg-primary hover:bg-primary/90 text-white font-bold text-lg py-4 rounded-2xl shadow-lg transition-all disabled:opacity-50 hover:-translate-y-1"
                         >
-                            {submitting ? 'Saving...' : (isEditing ? 'Save Changes' : 'Add Drink')}
+                            {submitting ? (imageFile ? 'Uploading photo...' : 'Saving...') : (isEditing ? 'Save Changes' : 'Add Drink')}
                         </button>
                     </div>
                 </form>

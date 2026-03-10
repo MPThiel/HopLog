@@ -11,10 +11,22 @@ export default function BeerCard({ beer }) {
         >
             <div className="w-16 h-28 shrink-0 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center p-2 mb-[-8px] mt-[-8px]">
                 {beer.imageUrl ? (
-                    <img src={beer.imageUrl} alt={beer.name} className="w-full h-full object-contain drop-shadow-md" />
-                ) : (
-                    <div className="text-gray-400 text-xs text-center p-1">No Image</div>
-                )}
+                    <img
+                        src={beer.imageUrl}
+                        alt={beer.name}
+                        className="w-full h-full object-contain drop-shadow-md"
+                        onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                        }}
+                    />
+                ) : null}
+                <div
+                    className="text-gray-400 text-xs text-center p-1 items-center justify-center"
+                    style={{ display: beer.imageUrl ? 'none' : 'flex' }}
+                >
+                    🍺
+                </div>
             </div>
 
             <div className="flex-1 min-w-0 py-1">

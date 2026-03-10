@@ -1,5 +1,14 @@
-import { db } from './config';
+import { db, storage } from './config';
 import { collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+export const uploadBeerImage = async (file) => {
+    const filename = `${Date.now()}-${file.name}`;
+    const storageRef = ref(storage, `beer-images/${filename}`);
+    const snapshot = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snapshot.ref);
+};
+
 
 const beersCollection = collection(db, 'beers');
 
